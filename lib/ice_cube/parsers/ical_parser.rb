@@ -2,28 +2,57 @@ module IceCube
   class IcalParser
     def self.schedule_from_ical(ical_string, options = {})
       data = {}
+      parser = :parse_line
       ical_string.each_line do |line|
         (property, value) = line.split(':')
         (property, tzid) = property.split(';')
-        case property
-        when 'DTSTART'
-          data[:start_time] = TimeUtil.deserialize_time(value)
-        when 'DTEND'
-          data[:end_time] = TimeUtil.deserialize_time(value)
-        when 'RDATE'
-          data[:rtimes] ||= []
-          data[:rtimes] += value.split(',').map { |v| TimeUtil.deserialize_time(v) }
-        when 'EXDATE'
-          data[:extimes] ||= []
-          data[:extimes] += value.split(',').map { |v| TimeUtil.deserialize_time(v) }
-        when 'DURATION'
-          data[:duration] # FIXME
-        when 'RRULE'
-          data[:rrules] ||= []
-          data[:rrules] += [rule_from_ical(value)]
+
+        parser, attr, occurrences = *send(parser, property, value)
+
+        case attr
+        when :start_time,
+             :end_time
+          data[attr] = occurrences
+        when :rtimes,
+             :rrules,
+             :extimes
+          data[attr] ||= []
+          data[attr] += occurrences
         end
       end
       Schedule.from_hash data
+    end
+
+    def self.parse_line(property, value)
+      result = case property
+        when 'DTSTART'
+          [:parse_line, :start_time, TimeUtil.deserialize_time(value)]
+        when 'DTEND'
+          [:parse_line, :end_time, TimeUtil.deserialize_time(value)]
+        when 'RDATE'
+          [:parse_line, :rtimes, value.split(',').map { |v| TimeUtil.deserialize_time(v) }]
+        when 'EXDATE'
+          [:parse_line, :extimes, value.split(',').map { |v| TimeUtil.deserialize_time(v) }]
+        when 'DURATION'
+          nil # FIXME
+        when 'RRULE'
+          [:parse_line, :rrules, [rule_from_ical(value)]]
+        when 'BEGIN'
+          [:parse_vevent_line] if value.chomp == 'VEVENT'
+        end
+
+      result || [:parse_line]
+    end
+
+    def self.parse_vevent_line(property, value)
+      result = case property
+        when 'DTSTART'
+          [:parse_vevent_line, :rtimes, [TimeUtil.deserialize_time(value)]]
+        when 'END'
+          [:parse_line] if value.chomp == 'VEVENT'
+        end
+
+      result || [:parse_vevent_line]
     end
 
     def self.rule_from_ical(ical)

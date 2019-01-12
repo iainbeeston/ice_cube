@@ -1,5 +1,9 @@
 # Changelog
 
+## Current
+
+* [FEATURE]     Added support for parsing VEVENT from iCal format (#465)
+
 ## 0.16.3 / 2018-07-23
 
 * [FEATURE]     Added support for parsing RDATE from iCal format
